@@ -3,8 +3,7 @@ library("caret")
 library("ranger") # Faster RF modeling
 
 
-setwd("C:/Users/Utilizador/Desktop/kaagle/titanic")
-
+setwd("C:/Users/Utilizador/Desktop/kaggle/Titanic---Survival-Prediction")
 set.seed(45613)
 
 # Load data
@@ -77,7 +76,7 @@ titanic <- titanic %>%
         mutate(Family = SibSp + Parch + 1) %>% 
         mutate(FamilySize = factor(ifelse(Family > 4, "Large", ifelse(Family == 1, "Single", "Small"))))
 
-titanic[1:891,] %>% count(FamilySize)
+titanic[1:891,] %>% count(FamilySize, sort = TRUE)
 
 ggplot(titanic[1:891,], aes(x = FamilySize, fill = Survived)) +
         geom_bar(position = "fill") +
@@ -100,16 +99,32 @@ ggplot(titanic[1:891,], aes(x = FamilySize, fill = Survived)) +
 # Embarked
 
 titanic <- titanic %>%
-        mutate(Pclass = factor(Embarked))
+        mutate(Embarked = factor(Embarked)) 
 
-ggplot(titanic[1:891,], aes(Embarked, fill=Survived)) + 
-        geom_bar(position = "fill") +
-        ylab("Survival") +
-        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
-        ggtitle("Survival by Embarked")
+titanic %>% count(Embarked, sort = TRUE)
 
+titanic$Embarked[titanic$Embarked == ""] <- NA 
+
+titanic %>%
+        filter(is.na(Embarked))
+
+titanic %>%
+        group_by(Embarked, Pclass) %>%
+        filter(Pclass == "1") %>%
+        summarise(mFare = median(Fare),n = n())
+
+titanic$Embarked[c(62, 830)] <- 'C'
 
 # Fare
+
+titanic %>%
+        filter(is.na(Fare)) 
+
+titanic <- titanic %>% 
+        mutate(Fare = ifelse(PassengerId == 1044, 
+                             median((titanic %>% filter(!is.na(Fare), 
+                                                        Pclass == 3, 
+                                                        PassengerId != 1044))$Fare), Fare))
 
 ggplot(titanic[1:891,], aes(Fare)) +
         geom_histogram(bins=30)
@@ -119,7 +134,7 @@ titanic <- titanic %>%
                 between(Fare, 0, 100) ~ "<=100",
                 Fare > 100 ~ ">100")))
 
-titanic[1:891,] %>% ungroup %>% count(FareGrp)
+titanic[1:891,] %>% count(FareGrp)
 
 ggplot(titanic[1:891,], aes(FareGrp, fill=Survived)) + 
         geom_bar() +
@@ -211,7 +226,7 @@ model.rf
 
 # Predict
 
-Survived <- predict(fit.rf, test1)
+Survived <- predict(model.rf, test1)
 Survived <- as.numeric(as.character(Survived))
 
 test1 %>%
