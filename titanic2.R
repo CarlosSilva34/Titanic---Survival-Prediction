@@ -47,9 +47,8 @@ ggplot(titanic[1:891,], aes(Sex, fill=Survived)) +
 library(stringr)
 titanic <- mutate(titanic, Title = str_sub(Name, str_locate(Name, ",")[ , 1] + 2, str_locate(Name, "\\.")[ , 1] - 1))
 
-titanic %>% group_by(Title) %>%
-        summarise(count = n()) %>%
-        arrange(desc(count))
+titanic %>% 
+        count(Title, sort = TRUE)
 
 
 titanic <- titanic %>%
@@ -76,7 +75,8 @@ titanic <- titanic %>%
         mutate(Family = SibSp + Parch + 1) %>% 
         mutate(FamilySize = factor(ifelse(Family > 4, "Large", ifelse(Family == 1, "Single", "Small"))))
 
-titanic[1:891,] %>% count(FamilySize, sort = TRUE)
+titanic %>% 
+        count(FamilySize, sort = TRUE)
 
 ggplot(titanic[1:891,], aes(x = FamilySize, fill = Survived)) +
         geom_bar(position = "fill") +
@@ -98,10 +98,8 @@ ggplot(titanic[1:891,], aes(x = FamilySize, fill = Survived)) +
 
 # Embarked
 
-titanic <- titanic %>%
-        mutate(Embarked = factor(Embarked)) 
-
-titanic %>% count(Embarked, sort = TRUE)
+titanic %>% 
+        count(Embarked, sort = TRUE)
 
 titanic$Embarked[titanic$Embarked == ""] <- NA 
 
@@ -111,9 +109,12 @@ titanic %>%
 titanic %>%
         group_by(Embarked, Pclass) %>%
         filter(Pclass == "1") %>%
-        summarise(mFare = median(Fare),n = n())
+        summarise(mFare = median(Fare), n = n())
 
 titanic$Embarked[c(62, 830)] <- 'C'
+
+titanic <- titanic %>%  
+        mutate(Embarked = factor(Embarked))
 
 # Fare
 
@@ -122,9 +123,9 @@ titanic %>%
 
 titanic <- titanic %>% 
         mutate(Fare = ifelse(PassengerId == 1044, 
-                             median((titanic %>% filter(!is.na(Fare), 
-                                                        Pclass == 3, 
-                                                        PassengerId != 1044))$Fare), Fare))
+                             median(filter(titanic,!is.na(Fare), 
+                                           Pclass == 3, 
+                                           PassengerId != 1044)$Fare), Fare))
 
 ggplot(titanic[1:891,], aes(Fare)) +
         geom_histogram(bins=30)
@@ -134,7 +135,8 @@ titanic <- titanic %>%
                 between(Fare, 0, 100) ~ "<=100",
                 Fare > 100 ~ ">100")))
 
-titanic[1:891,] %>% count(FareGrp)
+titanic %>% 
+        count(FareGrp)
 
 ggplot(titanic[1:891,], aes(FareGrp, fill=Survived)) + 
         geom_bar() +
@@ -164,7 +166,8 @@ titanic <- titanic %>%
                 between(Age, 16, 50) ~ "adult",
                 Age > 50 ~ "old")))
 
-titanic[1:891,] %>% count(AgeGrp)
+titanic %>% 
+        count(AgeGrp)
 
 ggplot(titanic[1:891,], aes(x = AgeGrp, fill = Survived)) +
         geom_bar(position = "fill") +
@@ -189,99 +192,47 @@ ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) +
         ggtitle("Age groups survival by Sex and Pclass") + facet_wrap(~ Sex*Pclass)
 
 
-# Model
-
-train1 <- titanic[1:891,]
-test1 <- titanic[892:1309,]
-
-
-tControl <- trainControl(
-        method = "repeatedcv",
-        number = 10,
-        repeats = 10,
-        allowParallel = TRUE)
-
-tgControl <- expand.grid(
-        .mtry = 7,
-        .splitrule = "gini",
-        .min.node.size = 10)
-
-model.rf <- train(Survived ~ 
-                        Sex + 
-                        Title + 
-                        FamilySize + 
-                        FareGrp + 
-                        Pclass + 
-                        AgeGrp + 
-                        Embarked, 
-                data = train1, 
-                trControl = tControl,
-                metric = "Accuracy",
-                importance = "impurity",
-                tuneGrid = tgControl,
-                num.trees = 2000,
-                method = "ranger")
-model.rf
-
-
-# Predict
-
-Survived <- predict(model.rf, test1)
-Survived <- as.numeric(as.character(Survived))
-
-test1 %>%
-        cbind(., Survived) -> test.pred
-
-test.pred %>%
-        mutate(Survived = case_when(
-                is.na(n.fam) ~ Survived,
-                all.died == 1 & n.fam > 1 & Survived == 1 ~ 0,
-                TRUE ~ Survived
-        )
-        ) -> test.pred
-
-pred.rf <- data.frame(
-        cbind(
-                PassengerId = as.integer(as.character(test.final$PassengerId)),
-                Survived = as.integer(as.character(test.pred$Survived))
-        )
-)        
-
-write_csv(pred.rf, 'rf.output.csv')
-
-
-
-
-
-
-
-############################
 
 # Model
-
-titanic$FareGrp <- as.factor(titanic$FareGrp)
-titanic$AgeGrp <- as.factor(titanic$AgeGrp)
-titanic$Embarked <- as.factor(titanic$Embarked)
-
-titanic <- select(titanic, -c(Name, Ticket, Cabin)) %>%
-        glimpse()
-
-
-train1 <- titanic[1:891,]
-test1 <- titanic[892:1309,]
-
 
 library(party)
 set.seed(144)
-cf_model <- cforest(Survived ~ Sex + 
+cf_model <- cforest(Survived ~ 
+                            Sex + 
                             Title + 
                             FamilySize + 
                             FareGrp + 
                             Pclass + 
                             AgeGrp + 
-                            Embarked, 
+                            Embarked,
                     data = train1, 
                     controls = cforest_unbiased(ntree = 2000, mtry = 3)) 
 
+
+# Let's take a look at this model. First the confusion matrix, which shows 
+#how many predictions were correct for each category (died or survived):
+
+xtab <- table(predict(cf_model), train1$Survived)
+
+library(caret) 
+
+confusionMatrix(xtab)
+
+varimp(cf_model)
+
+cforestImpPlot <- function(x) {
+        cforest_importance <<- v <- varimp(x)
+        dotchart(v[order(v)])
+}
+
+cforestImpPlot(cf_model)
+
+# Finally, let's make our predictions, write a submission file and send it to Kaggle:
+
+cf_prediction <- predict(cf_model, newdata = test1, OOB=TRUE, type = "response")
+cf_prediction <- ifelse(cf_prediction == "No", 0, 1)
+cf_solution <- data.frame(PassengerID = test1$PassengerId, Survived = cf_prediction)
+# To submit this as an entry, just un-comment the next line and submit the .csv file 
+# write.csv(cf_solution, file = 'cf_model.csv', row.names = F)
 
 
