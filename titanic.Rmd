@@ -1,56 +1,106 @@
+---
+title: 'Titanic: Survival Prediction'
+author: "Carlos Silva"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Introduction
+
+In this competition, you’ll gain access to two similar datasets that include passenger information like name, age, gender, socio-economic class, etc. One dataset is titled `train.csv` and the other is titled `test.csv`.
+
+Train.csv will contain the details of a subset of the passengers on board (891 to be exact) and importantly, will reveal whether they survived or not, also known as the “ground truth”.
+
+The `test.csv` dataset contains similar information but does not disclose the “ground truth” for each passenger.
+
+Using the patterns you find in the train.csv data, predict whether the other 418 passengers on board (found in test.csv) survived.
+
+
+## Loading Packages
+
+```{r, message=FALSE, warning=FALSE}
 library("tidyverse")
 library("caret")
-library("ranger") # Faster RF modeling
+```
 
+## Loading and Preparing Data
 
-setwd("C:/Users/Utilizador/Desktop/kaggle/Titanic---Survival-Prediction")
-set.seed(45613)
-
-# Load data
+```{r}
 test <- read.csv('test.csv', stringsAsFactors = FALSE)
 train <- read.csv('train.csv', stringsAsFactors = FALSE)
+```
 
+Let's take a quick look at the data.
+```{r}
 glimpse(train)
 glimpse(test)
+```
+
+To see what proportion of people survived
+
+```{r}
+summarise(train, SurvivalRate = sum(Survived)/nrow(train)*100)
+```
+The survival rate among the train set was 38.38%.
 
 
-summarise(train, Survival = sum(Survived)/nrow(train)*100)
-
+For pre-processing, let’s collect all the data together
+```{r, message=FALSE, warning=FALSE}
 titanic <- full_join(train, test)
 glimpse(titanic)
+```
 
-
-# Impute missing  Age values in titanic data
+Impute missing  Age values in titanic data
+```{r}
 titanicPre <- titanic %>% select(-Ticket, -Name, -Cabin, -Embarked) 
 pre.proc <- preProcess(titanicPre, method = "bagImpute")
 titanicPre <- predict(pre.proc, titanicPre)
 titanic$Age <- titanicPre$Age
+```
 
+## Features
 
+### Survived
 
+The Survived variable is binary, either someone died or survived. Let’s make it a factor and give it each level a name so that it is more “readable”.
+```{r}
 library(forcats)
 titanic <- titanic %>%
         mutate(Survived = factor(Survived)) %>%
         mutate(Survived = fct_recode(Survived, "No" = "0", "Yes" = "1"))
+```
 
+### Sex
+
+Let’s recode Sex into a factor variable, tidying up the labels and then add a proportional bar plot to examine survival by Sex.
+
+```{r}
 titanic <- titanic %>%
         mutate(Sex = factor(Sex)) %>%
         mutate(Sex = fct_recode(Sex, "Female" = "female", "Male" = "male"))
-
-
+```
+```{r}
 ggplot(titanic[1:891,], aes(Sex, fill=Survived)) +
         geom_bar(position = "fill") +
         ylab("Survival") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) +
         ggtitle("Survival by Sex")
+```
 
-library(stringr)
+In this bar plot we can see that women were over three times more likely to survive than men.
+
+### Title
+
+Now let's extract the Title from passenger names and count them.
+```{r}
 titanic <- mutate(titanic, Title = str_sub(Name, str_locate(Name, ",")[ , 1] + 2, str_locate(Name, "\\.")[ , 1] - 1))
 
 titanic %>% 
         count(Title, sort = TRUE)
+```
 
-
+Convert title with low count into new title and count again
+```{r}
 titanic <- titanic %>%
         mutate(Title = factor(Title)) %>%
         mutate(Title = fct_collapse(Title, "Miss" = c("Mlle", "Ms"), "Mrs" = c("Mme", "the Countess"), 
@@ -59,49 +109,76 @@ titanic <- titanic %>%
 
 titanic %>% 
         count(Title, sort = TRUE)
+```
 
+```{r}
 ggplot(titanic[1:891,], aes(x = Title, fill = Survived)) +
         geom_bar(position = "fill") +
         ylab("Survival") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) +
         ggtitle("Survival by Title")
+```
 
-
+Only the Mr group had worse than average survival chances.
+ 
+```{r}
 ggplot(titanic[1:891,], aes(x=Title, fill=Survived)) + 
         geom_bar() + 
         theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
         ggtitle("Survival by title and Pclass") + 
         facet_wrap(~ Pclass)
+```
+ 
+the 3rd class passengers have the worse survival chances in all title groups.
 
+### Family size
 
+Now let's combine SibSp and Parch into a single “family size” variable, and define a large family as one that has more than 4 people, a small family as one that has more than 1 but fewer than 5 and single people as 1.
+
+```{r}
 titanic <- titanic %>% 
         mutate(Family = SibSp + Parch + 1) %>% 
         mutate(FamilySize = factor(ifelse(Family > 4, "Large", ifelse(Family == 1, "Single", "Small"))))
 
 titanic %>% 
         count(FamilySize, sort = TRUE)
+```
 
+```{r}
 ggplot(titanic[1:891,], aes(x = FamilySize, fill = Survived)) +
         geom_bar(position = "fill") +
         ylab("Survival") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle ("Survival by Family Size")
+```
 
+we can see that was easier to organize and save the familys that had a small size.
+
+```{r}
 ggplot(titanic[1:891,], aes(x = FamilySize, fill = Survived)) +
         geom_bar(position = "fill") +
         ylab("Survival") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle ("Survival by family size and sex") + facet_wrap(~ Sex)
+```
 
+The man with a large family had worse survival chances.
 
+```{r}
 ggplot(titanic[1:891,], aes(x = FamilySize, fill = Survived)) +
         geom_bar(position = "fill") +
         ylab("Survival") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) +
         ggtitle ("Survival by Family Size and Pclass") + facet_wrap(~ Pclass)
+```
 
-# Embarked
+All family sizes from the 1st class had better than a 50/50 chance to survive.
 
+
+### Embarked
+
+Let's see where the passengers embarked and transform the missing values into NA
+```{r}
 titanic %>% 
         count(Embarked, sort = TRUE)
 
@@ -109,54 +186,89 @@ titanic$Embarked[titanic$Embarked == ""] <- NA
 
 titanic %>%
         filter(is.na(Embarked))
+```
 
+Both passengers 62 and 830  had first class tickets and spend 80, let's see the embarkment ports of others who bought similar kinds of tickets
+```{r}
 titanic %>%
         group_by(Embarked, Pclass) %>%
         filter(Pclass == "1") %>%
         summarise(mFare = median(Fare), n = n())
 
 titanic$Embarked[c(62, 830)] <- 'C'
+```
 
+Looks like the median price for a first class ticket departing from 'C' (Charbourg) was 77, very similar to the value that passangers 62 and 830 spend (80), so i replace the NA values with 'C'.
+
+Now let’s recode Embarked into a factor variable
+```{r}
 titanic <- titanic %>%  
         mutate(Embarked = factor(Embarked))
+```
 
+Let’s tale a quick look at how embarkation ports relate to survival chances
+```{r}
 ggplot(titanic[1:891,], aes(x = Embarked, fill = Survived)) +
         geom_bar(position = "fill") +
         ylab("Survival") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) +
         ggtitle("Survival by Embarked")
+```
+The Cherbourg passengers appear to have had the better chances.
 
-# Fare
 
+### Fare
+
+First let´s see wich passengers have no fare information
+```{r}
 titanic %>%
         filter(is.na(Fare)) 
+```
+Looks like Passenger number 1044 as a 3rd class fare ticket.
 
+Now let’s insert the missing fare as the median fare for a 3rd-class passenger 
+```{r}
 titanic <- titanic %>% 
         mutate(Fare = ifelse(PassengerId == 1044, 
                              median(filter(titanic,!is.na(Fare), 
                                            Pclass == 3, 
                                            PassengerId != 1044)$Fare), Fare))
+```
 
+
+Let's look at Fare distribution
+```{r}
 ggplot(titanic[1:891,], aes(Fare)) +
         geom_histogram(bins=30)
+```
 
+Divide Fare into two groups
+```{r}
 titanic <- titanic %>% 
         mutate(FareGrp = factor(case_when(
                 between(Fare, 0, 100) ~ "<=100",
                 Fare > 100 ~ ">100")))
-
 titanic %>% 
         count(FareGrp)
+```
 
+Let´s take a look at Survival by this two fare groups.
+```{r}
 ggplot(titanic[1:891,], aes(FareGrp, fill=Survived)) + 
         geom_bar(position = "fill") +
         ylab("Survival") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle("Survival by fare group")
+```
+
+Passengers from fare group ">100" were over two times more likely to survive than passengers from the group "<=100"
 
 
-# Passenger class
 
+### Passenger class
+
+
+```{r}
 titanic <- titanic %>%
         mutate(Pclass = factor(Pclass))
 
@@ -166,84 +278,8 @@ geom_bar(position = "fill") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle("Survival by passenger class")
 
-# Age
+```
 
-ggplot(titanic[1:891,], aes(Age)) +
-        geom_histogram(bins=30)
+Only 3rd class passengers are above the survival rate line.
 
-titanic <- titanic %>% 
-        mutate(AgeGrp = factor( case_when(
-                between(Age, 0, 16) ~ "young",
-                between(Age, 16, 50) ~ "adult",
-                Age > 50 ~ "old")))
-
-titanic %>% 
-        count(AgeGrp)
-
-ggplot(titanic[1:891,], aes(x = AgeGrp, fill = Survived)) +
-        geom_bar(position = "fill") +
-        ylab("Survival") +
-        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) +
-        ggtitle("Survival by Age groups")
-
-
-ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
-        geom_bar() +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-        ggtitle("Age groups survival by Pclass") + facet_wrap(~ Pclass)
-
-ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
-        geom_bar() +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-        ggtitle("Age groups survival by Sex") + facet_wrap(~ Sex)
-
-ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
-        geom_bar() +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-        ggtitle("Age groups survival by Sex and Pclass") + facet_wrap(~ Sex*Pclass)
-
-
-
-# Model
-
-library(party)
-set.seed(144)
-cf_model <- cforest(Survived ~ 
-                            Sex + 
-                            Title + 
-                            FamilySize + 
-                            FareGrp + 
-                            Pclass + 
-                            AgeGrp + 
-                            Embarked,
-                    data = train1, 
-                    controls = cforest_unbiased(ntree = 2000, mtry = 3)) 
-
-
-# Let's take a look at this model. First the confusion matrix, which shows 
-#how many predictions were correct for each category (died or survived):
-
-xtab <- table(predict(cf_model), train1$Survived)
-
-library(caret) 
-
-confusionMatrix(xtab)
-
-varimp(cf_model)
-
-cforestImpPlot <- function(x) {
-        cforest_importance <<- v <- varimp(x)
-        dotchart(v[order(v)])
-}
-
-cforestImpPlot(cf_model)
-
-# Finally, let's make our predictions, write a submission file and send it to Kaggle:
-
-cf_prediction <- predict(cf_model, newdata = test1, OOB=TRUE, type = "response")
-cf_prediction <- ifelse(cf_prediction == "No", 0, 1)
-cf_solution <- data.frame(PassengerID = test1$PassengerId, Survived = cf_prediction)
-# To submit this as an entry, just un-comment the next line and submit the .csv file 
-# write.csv(cf_solution, file = 'cf_model.csv', row.names = F)
-
-
+### Age
