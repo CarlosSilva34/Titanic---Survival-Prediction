@@ -1,6 +1,5 @@
 library("tidyverse")
 library("caret")
-library("ranger") # Faster RF modeling
 
 
 setwd("C:/Users/Utilizador/Desktop/kaggle/Titanic---Survival-Prediction")
@@ -68,8 +67,9 @@ ggplot(titanic[1:891,], aes(x = Title, fill = Survived)) +
 
 
 ggplot(titanic[1:891,], aes(x=Title, fill=Survived)) + 
-        geom_bar() + 
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle("Survival by title and Pclass") + 
         facet_wrap(~ Pclass)
 
@@ -188,27 +188,33 @@ ggplot(titanic[1:891,], aes(x = AgeGrp, fill = Survived)) +
 
 
 ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
-        geom_bar() +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle("Age groups survival by Pclass") + facet_wrap(~ Pclass)
 
 ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
-        geom_bar() +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle("Age groups survival by Sex") + facet_wrap(~ Sex)
 
 ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
-        geom_bar() +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle("Age groups survival by Sex and Pclass") + facet_wrap(~ Sex*Pclass)
 
 
 
-# Model
+## Predict using random forest
+
+train1 <- titanic[1:891,]
+test1 <- titanic[892:1309,]
 
 library(party)
-set.seed(144)
-cf_model <- cforest(Survived ~ 
+set.seed(456)
+titanic_model <- cforest(Survived ~ 
                             Sex + 
                             Title + 
                             FamilySize + 
@@ -220,30 +226,18 @@ cf_model <- cforest(Survived ~
                     controls = cforest_unbiased(ntree = 2000, mtry = 3)) 
 
 
-# Let's take a look at this model. First the confusion matrix, which shows 
-#how many predictions were correct for each category (died or survived):
-
-xtab <- table(predict(cf_model), train1$Survived)
+ptable <- table(predict(titanic_model), train1$Survived)
 
 library(caret) 
 
-confusionMatrix(xtab)
+confusionMatrix(ptable)
 
-varimp(cf_model)
+varimp(titanic_model)
 
-cforestImpPlot <- function(x) {
-        cforest_importance <<- v <- varimp(x)
-        dotchart(v[order(v)])
-}
+tm.pred <- predict(titanic_model, newdata = test1, OOB=TRUE, type = "response")
+tm.pred <- ifelse(tm.pred == "No", 0, 1)
+tm.output <- data.frame(PassengerID = test1$PassengerId, Survived = tm.pred)
 
-cforestImpPlot(cf_model)
-
-# Finally, let's make our predictions, write a submission file and send it to Kaggle:
-
-cf_prediction <- predict(cf_model, newdata = test1, OOB=TRUE, type = "response")
-cf_prediction <- ifelse(cf_prediction == "No", 0, 1)
-cf_solution <- data.frame(PassengerID = test1$PassengerId, Survived = cf_prediction)
-# To submit this as an entry, just un-comment the next line and submit the .csv file 
-# write.csv(cf_solution, file = 'cf_model.csv', row.names = F)
+# write.csv(tm.output, file = 'titanic_model.csv', row.names = F)
 
 

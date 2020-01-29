@@ -123,13 +123,14 @@ Only the Mr group had worse than average survival chances.
  
 ```{r}
 ggplot(titanic[1:891,], aes(x=Title, fill=Survived)) + 
-        geom_bar() + 
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
         ggtitle("Survival by title and Pclass") + 
         facet_wrap(~ Pclass)
 ```
  
-the 3rd class passengers have the worse survival chances in all title groups.
+the Mr group had worse survival chances in all passenger classes.
 
 ### Family size
 
@@ -214,6 +215,7 @@ ggplot(titanic[1:891,], aes(x = Embarked, fill = Survived)) +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) +
         ggtitle("Survival by Embarked")
 ```
+
 The Cherbourg passengers appear to have had the better chances.
 
 
@@ -224,7 +226,7 @@ First let´s see wich passengers have no fare information
 titanic %>%
         filter(is.na(Fare)) 
 ```
-Looks like Passenger number 1044 as a 3rd class fare ticket.
+Looks like Passenger number 1044 has a 3rd class fare ticket.
 
 Now let’s insert the missing fare as the median fare for a 3rd-class passenger 
 ```{r}
@@ -280,6 +282,119 @@ geom_bar(position = "fill") +
 
 ```
 
-Only 3rd class passengers are above the survival rate line.
+Only 3rd class passengers are under the survival rate line.
 
 ### Age
+
+Transforming ages into groups
+```{r}
+ggplot(titanic[1:891,], aes(Age)) +
+        geom_histogram(bins=30)
+
+titanic <- titanic %>% 
+        mutate(AgeGrp = factor( case_when(
+                between(Age, 0, 16) ~ "young",
+                between(Age, 16, 50) ~ "adult",
+                Age > 50 ~ "old")))
+
+titanic %>% 
+        count(AgeGrp)
+```
+
+```{r}
+ggplot(titanic[1:891,], aes(x = AgeGrp, fill = Survived)) +
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) +
+        ggtitle("Survival by Age groups")
+```
+
+Only age group "young" are above the survival rate line.
+
+```{r}
+ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
+        ggtitle("Age groups survival by Pclass") + facet_wrap(~ Pclass)
+```
+
+Only 3rd class passengers are under the survival rate line in all age groups.
+
+```{r}
+ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
+        ggtitle("Age groups survival by Sex") + facet_wrap(~ Sex)
+```
+
+Only man from age group "adult" and "old" are under the survival rate line
+
+```{r}
+ggplot(titanic[1:891,], aes(AgeGrp, fill=Survived)) + 
+        geom_bar(position = "fill") +
+        ylab("Survival") +
+        geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) + 
+        ggtitle("Age groups survival by Sex and Pclass") + facet_wrap(~ Sex*Pclass)
+```
+
+The female are above the survival rate line in all age groups and passenger class. Only the young and adult male from 1st class and the young male from 2nd class are above that line.
+
+
+## Predict using random forest
+
+### Split into training and test sets
+
+```{r}
+train1 <- titanic[1:891,]
+test1 <- titanic[892:1309,]
+```
+
+### Building the model
+
+```{r, message=FALSE, warning=FALSE}
+library(party)
+set.seed(456)
+titanic_model <- cforest(Survived ~ 
+                            Sex + 
+                            Title + 
+                            FamilySize + 
+                            FareGrp + 
+                            Pclass + 
+                            AgeGrp + 
+                            Embarked,
+                    data = train1, 
+                    controls = cforest_unbiased(ntree = 2000, mtry = 3)) 
+```
+
+The confusion matrix shows how many predictions were correct for died or survived category
+
+```{r}
+ptable <- table(predict(titanic_model), train1$Survived)
+
+library(caret) 
+
+confusionMatrix(ptable)
+```
+
+Now let's see which variables are perceived as most important by the model
+
+```{r}
+varimp(titanic_model)
+```
+we can see that Title and Sex are by far the most important variables according to the model.
+
+
+let’s make the predictions and submit to Kaggle
+
+```{r}
+tm.pred <- predict(titanic_model, newdata = test1, OOB=TRUE, type = "response")
+tm.pred <- ifelse(tm.pred == "No", 0, 1)
+tm.output <- data.frame(PassengerID = test1$PassengerId, Survived = tm.pred)
+# Write the Output to file:
+# write.csv(tm.output, file = 'titanic_model.csv', row.names = F)
+```
+
+
+
