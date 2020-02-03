@@ -25,12 +25,16 @@ pre.proc <- preProcess(titanicPre, method = "bagImpute")
 titanicPre <- predict(pre.proc, titanicPre)
 titanic$Age <- titanicPre$Age
 
+## Features
 
+# Survived
 
 library(forcats)
 titanic <- titanic %>%
         mutate(Survived = factor(Survived)) %>%
         mutate(Survived = fct_recode(Survived, "No" = "0", "Yes" = "1"))
+
+# Sex
 
 titanic <- titanic %>%
         mutate(Sex = factor(Sex)) %>%
@@ -42,6 +46,8 @@ ggplot(titanic[1:891,], aes(Sex, fill=Survived)) +
         ylab("Survival") +
         geom_hline(yintercept = (sum(train$Survived)/nrow(train)), col = "black", lty = 2) +
         ggtitle("Survival by Sex")
+
+# Title
 
 library(stringr)
 titanic <- mutate(titanic, Title = str_sub(Name, str_locate(Name, ",")[ , 1] + 2, str_locate(Name, "\\.")[ , 1] - 1))
@@ -73,6 +79,7 @@ ggplot(titanic[1:891,], aes(x=Title, fill=Survived)) +
         ggtitle("Survival by title and Pclass") + 
         facet_wrap(~ Pclass)
 
+# Family size
 
 titanic <- titanic %>% 
         mutate(Family = SibSp + Parch + 1) %>% 

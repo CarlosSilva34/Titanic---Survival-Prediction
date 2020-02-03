@@ -119,7 +119,7 @@ ggplot(titanic[1:891,], aes(x = Title, fill = Survived)) +
         ggtitle("Survival by Title")
 ```
 
-Only the Mr group had worse than average survival chances.
+Only the "Mr" group had worse than average survival chances.
  
 ```{r}
 ggplot(titanic[1:891,], aes(x=Title, fill=Survived)) + 
@@ -130,7 +130,7 @@ ggplot(titanic[1:891,], aes(x=Title, fill=Survived)) +
         facet_wrap(~ Pclass)
 ```
  
-the Mr group had worse survival chances in all passenger classes.
+the "Mr" group had worse survival chances in all passenger classes.
 
 ### Family size
 
